@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect } from "react";
 import { searchWallpapers } from "./services/wallhaven";
 
 /* ===================== Constants ===================== */
@@ -43,7 +43,10 @@ function formatBytes(bytes) {
   if (!bytes) return "";
   const u = ["KB", "MB", "GB", "TB"];
   let i = -1;
-  do { bytes /= 1024; i++; } while (bytes >= 1024 && i < u.length - 1);
+  do {
+    bytes /= 1024;
+    i++;
+  } while (bytes >= 1024 && i < u.length - 1);
   return `${bytes.toFixed(1)}${u[i]}`;
 }
 
@@ -65,44 +68,97 @@ const deriveBadges = (w) => {
 
 /* ===================== Modal ===================== */
 
-function ImageModal({ image, onClose, query }) {
-  const isPortrait = image?.dimension_y > image?.dimension_x;
-  const is4k = image?.dimension_x >= 3840 || image?.dimension_y >= 2160;
-  const category = (image?.category || "general").replace(/^\w/, c => c.toUpperCase());
-
-  const esc = useCallback((e) => e.key === "Escape" && onClose(), [onClose]);
-  useEffect(() => {
-    document.addEventListener("keydown", esc);
-    return () => document.removeEventListener("keydown", esc);
-  }, [esc]);
-
+function ImageModal({ image, onClose, onNext, onPrev, query }) {
   if (!image) return null;
+
+  const isPortrait = (image?.dimension_y ?? 0) > (image?.dimension_x ?? 0);
+  const is4k =
+    (image?.dimension_x ?? 0) >= 3840 || (image?.dimension_y ?? 0) >= 2160;
+  const category = (image?.category || "general").replace(
+    /^\w/,
+    (c) => c.toUpperCase()
+  );
+
+  // keyboard: Esc to close, arrows to navigate
+  const onKey = React.useCallback(
+    (e) => {
+      if (e.key === "Escape") onClose?.();
+      if (e.key === "ArrowRight") onNext?.();
+      if (e.key === "ArrowLeft") onPrev?.();
+    },
+    [onClose, onNext, onPrev]
+  );
+
+  React.useEffect(() => {
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onKey]);
 
   return (
     <div className="modal" role="dialog" aria-modal="true">
       <div className="modal__backdrop" onClick={onClose} />
+
       <div className="modal__panel">
+        {/* Prev / Next */}
+        <button
+          className="nav-btn_nav-btn--left"
+          onClick={(e) => {
+            e.stopPropagation();
+            onPrev?.();
+          }}
+          aria-label="Previous"
+        >
+          ◀
+        </button>
+        <button
+          className="nav-btn_nav-btn--right"
+          onClick={(e) => {
+            e.stopPropagation();
+            onNext?.();
+          }}
+          aria-label="Next"
+        >
+          ▶
+        </button>
+
+        {/* Top-right actions */}
         <div className="modal__actions">
           <button className="btn btn--primary">Save</button>
+
           <button
             className="btn btn--ghost"
             onClick={() => {
               const url = image.path || image.url || image.short_url;
-              if (navigator.share) navigator.share({ url }).catch(() => {});
-              else navigator.clipboard?.writeText(url);
+              if (navigator.share) {
+                navigator.share({ url }).catch(() => {});
+              } else {
+                navigator.clipboard?.writeText(url);
+              }
             }}
+            aria-label="Share / copy link"
           >
             ⤴
           </button>
-          <button className="btn btn--ghost" onClick={onClose}>✕</button>
+
+          <button className="btn btn--ghost" onClick={onClose} aria-label="Close">
+            ✕
+          </button>
         </div>
 
+        {/* Left: full image with containment (keeps orientation) */}
         <div className="detail__left">
-          <img className="detail__image" src={image.path || image.thumbs?.large} alt={image.id} />
+          <img
+            className="detail__image"
+            src={image.path || image.thumbs?.large || image.url}
+            alt=""
+          />
         </div>
 
+        {/* Right: details */}
         <aside className="detail__right">
-          <h2 className="detail__title">{image.id ? `#${image.id}` : "Wallpaper"}</h2>
+          <h2 className="detail__title">
+            {image.id ? `#${image.id}` : "Wallpaper"}
+          </h2>
 
           <div className="detail__chips">
             {query && <span className="chip">{query}</span>}
@@ -113,11 +169,15 @@ function ImageModal({ image, onClose, query }) {
 
           <div className="detail__stats">
             <div>
-              <div className="stat__value">{(image.views ?? 0).toLocaleString()}</div>
+              <div className="stat__value">
+                {(image.views ?? 0).toLocaleString()}
+              </div>
               <div className="stat__label">Views</div>
             </div>
             <div>
-              <div className="stat__value">{(image.favorites ?? 0).toLocaleString()}</div>
+              <div className="stat__value">
+                {(image.favorites ?? 0).toLocaleString()}
+              </div>
               <div className="stat__label">Favorites</div>
             </div>
           </div>
@@ -125,7 +185,9 @@ function ImageModal({ image, onClose, query }) {
           <div className="detail__section">
             <h3>About this wallpaper</h3>
             <p>
-              Resolution: {image.resolution || `${image.dimension_x}×${image.dimension_y}`}
+              Resolution:{" "}
+              {image.resolution ||
+                `${image.dimension_x}×${image.dimension_y}`}
               {image.file_type ? ` • ${image.file_type.toUpperCase()}` : ""}
             </p>
           </div>
@@ -143,8 +205,13 @@ function ImageModal({ image, onClose, query }) {
             <div className="detail__section">
               <h3>Palette</h3>
               <div className="palette">
-                {image.colors.slice(0, 6).map(c => (
-                  <span key={c} className="swatch" style={{ background: c }} title={c} />
+                {image.colors.slice(0, 6).map((c) => (
+                  <span
+                    key={c}
+                    className="swatch"
+                    style={{ background: c }}
+                    title={c}
+                  />
                 ))}
               </div>
             </div>
@@ -166,7 +233,10 @@ const App = () => {
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  // modal state
   const [selected, setSelected] = useState(null);
+  const [selectedIndex, setSelectedIndex] = useState(null);
 
   // header controls
   const [safeMode, setSafeMode] = useState(true);
@@ -192,9 +262,9 @@ const App = () => {
     else if (quality === "Mobile Ready") atleast = "1080x1920";
 
     return {
-      sorting: sortBy,       // toplist | date_added | views | favorites | random
-      ratios,                // comma-separated
-      atleast,               // resolution floor
+      sorting: sortBy, // toplist | date_added | views | favorites | random
+      ratios, // comma-separated
+      atleast, // resolution floor
       colors: color.hex ?? undefined, // hex w/o #
       purity: safeMode ? "100" : "110",
       // categories: "100",
@@ -227,18 +297,13 @@ const App = () => {
 
   // initial load
   useEffect(() => {
-    const load = async () => {
-      await fetchWallpapers("pokemon", 1);
-    };
-    load();
+    fetchWallpapers("", 1); // empty query = all wallpapers
   }, []);
 
   // page change
   useEffect(() => {
-    const load = async () => {
-      await fetchWallpapers(query, page);
-    };
-    load();
+    if (page === 1) return; // avoid double-load on mount when we set page to 1 elsewhere
+    fetchWallpapers(query, page);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page]);
 
@@ -266,11 +331,37 @@ const App = () => {
     const close = (e) => {
       const panel = document.querySelector(".filters-dd");
       const btn = document.querySelector(".filters__btn");
-      if (panel && !panel.contains(e.target) && btn && !btn.contains(e.target)) setOpenDD(false);
+      if (panel && !panel.contains(e.target) && btn && !btn.contains(e.target))
+        setOpenDD(false);
     };
     document.addEventListener("mousedown", close);
     return () => document.removeEventListener("mousedown", close);
   }, [openDD]);
+
+  // Modal helpers (now correctly inside component)
+  const openModal = (img, index) => {
+    setSelected(img);
+    setSelectedIndex(index);
+  };
+
+  const closeModal = () => {
+    setSelected(null);
+    setSelectedIndex(null);
+  };
+
+  const showNext = () => {
+    if (selectedIndex === null || images.length === 0) return;
+    const nextIndex = (selectedIndex + 1) % images.length;
+    setSelected(images[nextIndex]);
+    setSelectedIndex(nextIndex);
+  };
+
+  const showPrev = () => {
+    if (selectedIndex === null || images.length === 0) return;
+    const prevIndex = (selectedIndex - 1 + images.length) % images.length;
+    setSelected(images[prevIndex]);
+    setSelectedIndex(prevIndex);
+  };
 
   return (
     <div className="page">
@@ -279,13 +370,13 @@ const App = () => {
         <div className="nav__left">
           <div className="logo-badge">W</div>
           <div className="nav__brand">
-            <div className="nav__title">Wallify</div>
+            <div className="nav__title">Wallheaven</div>
             <div className="nav__subtitle">Premium wallpapers</div>
           </div>
         </div>
 
         <div className="nav__search">
-          <svg viewBox="0 0 24 24">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
             <circle cx="11" cy="11" r="8" stroke="currentColor" strokeWidth="2" fill="none" />
             <path d="M21 21l-3.5-3.5" stroke="currentColor" strokeWidth="2" fill="none" />
           </svg>
@@ -294,7 +385,7 @@ const App = () => {
             placeholder="Search for nature, abstract, space..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && fetchWallpapers(query, 1)}
+            onKeyDown={(e) => e.key === "Enter" && handleSearch()}
           />
         </div>
       </div>
@@ -307,7 +398,7 @@ const App = () => {
             className={`cat ${activeCat === c ? "cat--active" : ""}`}
             onClick={() => {
               setActiveCat(c);
-              setPage(1); // reset to first page when changing category
+              setPage(1);
               fetchWallpapers(c === "All Wallpapers" ? "" : c, 1);
             }}
           >
@@ -318,7 +409,7 @@ const App = () => {
 
       {/* === toolbar: Filters button + Safe Mode toggle === */}
       <div className="toolbar wallify">
-        <button className="filters__btn" onClick={() => setOpenDD(v => !v)}>
+        <button className="filters__btn" onClick={() => setOpenDD((v) => !v)}>
           <span className="filters__icon">⏷</span> Filters
         </button>
 
@@ -340,8 +431,10 @@ const App = () => {
               <label className="filters-dd__label">Sort by:</label>
               <div className="select">
                 <select value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
-                  {SORT.map(o => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
+                  {SORT.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
                   ))}
                 </select>
                 <span className="select__chev">▾</span>
@@ -351,7 +444,7 @@ const App = () => {
             <div className="filters-dd__row">
               <span className="filters-dd__label">Layout:</span>
               <div className="chiprow">
-                {LAYOUT.map(v => (
+                {LAYOUT.map((v) => (
                   <button
                     key={v}
                     className={`chip2 ${layout === v ? "chip2--active" : ""}`}
@@ -366,7 +459,7 @@ const App = () => {
             <div className="filters-dd__row">
               <span className="filters-dd__label">Quality:</span>
               <div className="chiprow">
-                {QUALITY.map(v => (
+                {QUALITY.map((v) => (
                   <button
                     key={v}
                     className={`chip2 ${quality === v ? "chip2--active" : ""}`}
@@ -381,7 +474,7 @@ const App = () => {
             <div className="filters-dd__row">
               <span className="filters-dd__label">Color:</span>
               <div className="chiprow">
-                {COLORS.map(c => (
+                {COLORS.map((c) => (
                   <button
                     key={c.name}
                     className={`chip2 ${color.name === c.name ? "chip2--active" : ""}`}
@@ -390,7 +483,9 @@ const App = () => {
                     <span
                       className="dot"
                       style={{
-                        background: c.hex ? `#${c.hex}` : "linear-gradient(90deg,#ff6b6b,#ffd93d,#6bcBef)"
+                        background: c.hex
+                          ? `#${c.hex}`
+                          : "linear-gradient(90deg,#ff6b6b,#ffd93d,#6bcBef)",
                       }}
                     />
                     {c.name}
@@ -400,8 +495,12 @@ const App = () => {
             </div>
 
             <div className="filters-dd__actions">
-              <button className="btn btn--ghost" onClick={resetFilters}>Reset</button>
-              <button className="btn btn--primary" onClick={applyFilters}>Apply</button>
+              <button className="btn btn--ghost" onClick={resetFilters}>
+                Reset
+              </button>
+              <button className="btn btn--primary" onClick={applyFilters}>
+                Apply
+              </button>
             </div>
           </div>
         )}
@@ -411,25 +510,24 @@ const App = () => {
       {loading && <p className="meta-line">Loading wallpapers...</p>}
       {error && <p className="meta-line" style={{ color: "red" }}>{error}</p>}
 
-      {/* === gallery with corrected card (no duplication) === */}
+      {/* === gallery === */}
       <section className="gallery">
-        {images.map((img) => (
+        {images.map((img, idx) => (
           <div
-            key={img.id}
+            key={img.id ?? `${img.url}-${idx}`}
             className="cardv"
+            onClick={() => openModal(img, idx)}
             role="button"
             tabIndex={0}
-            onClick={() => setSelected(img)}
           >
-            {/* IMAGE */}
             <div className="cardv__media">
-              {img.thumbs?.large && (
-              <img
-                src={img.thumbs.large}
-                alt="Wallpaper preview"
-                loading="lazy"
-              />
-            )}
+              {(img.thumbs?.large || img.url) && (
+                <img
+                  src={img.thumbs?.large || img.url}
+                  alt="Wallpaper preview"
+                  loading="lazy"
+                />
+              )}
 
               {/* HOVER OVERLAY: only View + Get */}
               <div className="cardv__overlay">
@@ -437,19 +535,21 @@ const App = () => {
                   className={`fav-btn ${img.isFav ? "active" : ""}`}
                   onClick={(e) => {
                     e.stopPropagation();
-                    img.isFav = !img.isFav; // temporary local toggle
-                    setImages([...images]); // re-render (simple demo)
+                    img.isFav = !img.isFav; // demo-only
+                    setImages([...images]); // re-render
                   }}
                 >
                   {img.isFav ? "❤️" : "🤍"}
                 </button>
               </div>
-              </div>
+            </div>
 
-            {/* BODY (always visible) */}
+            {/* BODY */}
             <div className="cardv__body">
               <h3 className="cardv__title">{img.id || "Wallpaper"}</h3>
-              <div className="cardv__by">by <span>{img.uploader?.username || "Unknown"}</span></div>
+              <div className="cardv__by">
+                by <span>{img.uploader?.username || "Unknown"}</span>
+              </div>
 
               <div className="meta">
                 <div className="meta__item" title="Favorites">
@@ -459,13 +559,16 @@ const App = () => {
                   {(img.views ?? 0).toLocaleString()} 👁
                 </div>
                 <div className="meta__item" title="Resolution">
-                  {img.resolution || `${img.dimension_x}×${img.dimension_y}`}
+                  {img.resolution ||
+                    `${img.dimension_x ?? "—"}×${img.dimension_y ?? "—"}`}
                 </div>
               </div>
 
               <div className="tags">
-                {(img.tags || []).slice(0, 3).map(t => (
-                  <span key={t?.id || t?.name} className="tag">{t?.name || "tag"}</span>
+                {(img.tags || []).slice(0, 3).map((t) => (
+                  <span key={t?.id || t?.name} className="tag">
+                    {t?.name || "tag"}
+                  </span>
                 ))}
                 {Array.isArray(img.tags) && img.tags.length > 3 && (
                   <span className="tag tag--muted">+{img.tags.length - 3}</span>
@@ -473,7 +576,9 @@ const App = () => {
                 {!img.tags && (
                   <>
                     <span className="tag">{img.category || "general"}</span>
-                    <span className="tag">{img.file_type?.toUpperCase() || "IMAGE"}</span>
+                    <span className="tag">
+                      {img.file_type?.toUpperCase() || "IMAGE"}
+                    </span>
                   </>
                 )}
               </div>
@@ -482,18 +587,27 @@ const App = () => {
         ))}
       </section>
 
-
       {images.length > 0 && (
         <div className="pagination">
-          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}>Prev</button>
+          <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}>
+            Prev
+          </button>
           <span style={{ alignSelf: "center", fontWeight: 500 }}>Page {page}</span>
-          <button onClick={() => setPage(p => p + 1)}>Next</button>
+          <button onClick={() => setPage((p) => p + 1)}>Next</button>
         </div>
       )}
 
       <footer>Built with Wallhaven API</footer>
 
-      {selected && <ImageModal image={selected} query={query} onClose={() => setSelected(null)} />}
+      {selected && (
+        <ImageModal
+          image={selected}
+          onClose={closeModal}
+          onNext={showNext}
+          onPrev={showPrev}
+          query={query}
+        />
+      )}
     </div>
   );
 };
