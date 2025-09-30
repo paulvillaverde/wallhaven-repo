@@ -311,8 +311,34 @@ footer{margin-top:36px;text-align:center;font-size:13px;color:#64748b}
 .modal__backdrop{position:absolute;inset:0;background:rgba(0,0,0,.5)}
 .modal__panel{position:relative;width:min(1200px,100%);background:#fff;border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.35);display:grid;grid-template-columns:2fr 1fr;gap:28px;max-height:calc(100vh - 80px);overflow:auto}
 @media (max-width:1100px){.modal__panel{grid-template-columns:1fr}}
-.detail__left{padding:24px;display:flex;align-items:center;justify-content:center}
-.detail__image{width:100%;height:auto;max-height:calc(100vh - 128px);border-radius:16px;object-fit:cover;aspect-ratio:16/9;box-shadow:0 10px 30px rgba(0,0,0,.12)}
+/* Make the visual area size itself like the white container height */
+.detail__left{
+  padding:24px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  /* Fill available modal height minus some padding */
+  height: calc(100vh - 160px);
+  min-height: 360px;            /* keeps it nice on short screens */
+}
+
+/* Image scales to fit container, preserves orientation, no crop */
+.detail__image{
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;          /* key: contain instead of cover */
+  border-radius: 16px;
+  box-shadow: 0 10px 30px rgba(0,0,0,.12);
+}
+
+/* On narrow screens where the modal stacks, reduce height so it fits */
+@media (max-width:1100px){
+  .detail__left{
+    height: calc(100vh - 220px);
+  }
+}
 .modal__actions{position:absolute;top:14px;right:14px;display:flex;gap:8px;z-index:2}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:1px solid #e2e8f0;background:#fff;padding:10px 14px;border-radius:999px;cursor:pointer;font-weight:600;color:#111827}
 .btn--primary{background:#ef4444;color:#fff;border-color:#ef4444}
