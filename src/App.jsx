@@ -99,32 +99,40 @@ function ImageModal({ image, onClose, onNext, onPrev, query }) {
       <div className="modal__backdrop" onClick={onClose} />
 
       <div className="modal__panel">
-        {/* Prev / Next */}
-        <button
-          className="nav-btn_nav-btn--left"
-          onClick={(e) => {
-            e.stopPropagation();
-            onPrev?.();
-          }}
-          aria-label="Previous"
-        >
-          ◀
-        </button>
-        <button
-          className="nav-btn_nav-btn--right"
-          onClick={(e) => {
-            e.stopPropagation();
-            onNext?.();
-          }}
-          aria-label="Next"
-        >
-          ▶
-        </button>
+        {/* Left: full image with containment (keeps orientation) */}
+        <div className="detail__left" style={{ position: "relative" }}>
+          {/* Prev Button */}
+          <button
+            className="nav-btn nav-btn--left"
+            onClick={(e) => {
+              e.stopPropagation();
+              onPrev?.();
+            }}
+            aria-label="Previous"
+          >
+            ◀
+          </button>
+          <img
+            className="detail__image"
+            src={image.path || image.thumbs?.large || image.url}
+            alt=""
+          />
+          {/* Next Button */}
+          <button
+            className="nav-btn nav-btn--right"
+            onClick={(e) => {
+              e.stopPropagation();
+              onNext?.();
+            }}
+            aria-label="Next"
+          >
+            ▶
+          </button>
+        </div>
 
         {/* Top-right actions */}
         <div className="modal__actions">
           <button className="btn btn--primary">Save</button>
-
           <button
             className="btn btn--ghost"
             onClick={() => {
@@ -139,19 +147,9 @@ function ImageModal({ image, onClose, onNext, onPrev, query }) {
           >
             ⤴
           </button>
-
           <button className="btn btn--ghost" onClick={onClose} aria-label="Close">
             ✕
           </button>
-        </div>
-
-        {/* Left: full image with containment (keeps orientation) */}
-        <div className="detail__left">
-          <img
-            className="detail__image"
-            src={image.path || image.thumbs?.large || image.url}
-            alt=""
-          />
         </div>
 
         {/* Right: details */}

@@ -19,7 +19,7 @@
 }
 
 .modal__panel {
-  position: relative; /* so arrows stay inside this box */
+  position: relative;
   padding: 24px;
   display: flex;
   align-items: center;
@@ -28,7 +28,8 @@
   min-height: 360px;
 }
 
-.modal__panel .nav-btn_nav-btn--left {
+/* Navigation buttons */
+.modal__panel .nav-btn {
   position: absolute;
   top: 50%;
   transform: translateY(-50%);
@@ -44,20 +45,35 @@
   justify-content: center;
   cursor: pointer;
   z-index: 2;
+  transition: background 0.2s;
 }
 
-.modal__panel .nav-btn_nav-btn--left-btn:hover {
+.modal__panel .nav-btn.prev {
+  left: 24px;
+  right: auto;
+}
+.modal__panel .nav-btn.next {
+  right: 24px;
+  left: auto;
+}
+.modal__panel .nav-btn:hover {
   background: rgba(0, 0, 0, 0.7);
 }
 
-.modal__panel .nav-btn_nav-btn--left {
-  left: 24px;  /* equal spacing inside image area */
+.detail__left {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.modal__panel .nav-btn--nav-btn_nav-btn--right {
-  right: 24px;
+.nav-btn--left {
+  left: 16px;
 }
 
+.nav-btn--right {
+  right: 16px;
+}
 
 @keyframes logo-spin {
   from {
