@@ -246,6 +246,9 @@ const App = () => {
   const [quality, setQuality] = useState(QUALITY[0]);
   const [color, setColor] = useState(COLORS[0]);
 
+  // Add this state to store total pages
+  const [totalPages, setTotalPages] = useState(1);
+
   const apiKey = "JKtOMDLrvv6sLV5C0GYxyRLUlpPGWAry";
 
   const buildParams = () => {
@@ -277,17 +280,19 @@ const App = () => {
     try {
       const params = buildParams();
       const data = await searchWallpapers({
-        q: searchQuery, // category/search term
+        q: searchQuery,
         page: currentPage,
         per_page: 24,
         apikey: apiKey,
         ...params,
       });
       setImages(data?.data || []);
+      setTotalPages(data?.meta?.last_page || 1); // <-- update here
     } catch (err) {
       console.error("[fetchWallpapers]", err);
       setImages([]);
       setError(err?.message || "Failed to fetch wallpapers. Please try again.");
+      setTotalPages(1);
     } finally {
       setLoading(false);
     }
@@ -587,11 +592,33 @@ const App = () => {
 
       {images.length > 0 && (
         <div className="pagination">
-          <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}>
-            Prev
-          </button>
-          <span style={{ alignSelf: "center", fontWeight: 500 }}>Page {page}</span>
-          <button onClick={() => setPage((p) => p + 1)}>Next</button>
+          {(() => {
+            const maxButtons = 5;
+            let start = Math.max(1, page - Math.floor(maxButtons / 2));
+            let end = start + maxButtons - 1;
+            if (end > totalPages) {
+              end = totalPages;
+              start = Math.max(1, end - maxButtons + 1);
+            }
+            return Array.from({ length: end - start + 1 }, (_, i) => (
+              <button
+                key={start + i}
+                onClick={() => setPage(start + i)}
+                className={page === start + i ? "active" : ""}
+                style={{
+                  margin: "0 4px",
+                  fontWeight: page === start + i ? "bold" : "normal",
+                  background: page === start + i ? "#eee" : "transparent",
+                  borderRadius: "6px",
+                  border: "none",
+                  padding: "6px 12px",
+                  cursor: "pointer"
+                }}
+              >
+                {start + i}
+              </button>
+            ));
+          })()}
         </div>
       )}
 
