@@ -303,9 +303,13 @@ const App = () => {
     fetchWallpapers("", 1); // empty query = all wallpapers
   }, []);
 
-  // page change
+  // page change (skip the very first render — initial load does an explicit fetch)
+  const initialPageLoad = React.useRef(true);
   useEffect(() => {
-    if (page === 1) return; // avoid double-load on mount when we set page to 1 elsewhere
+    if (initialPageLoad.current) {
+      initialPageLoad.current = false;
+      return;
+    }
     fetchWallpapers(query, page);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page]);
@@ -592,6 +596,21 @@ const App = () => {
 
       {images.length > 0 && (
         <div className="pagination">
+          <button
+            onClick={() => setPage(Math.max(1, page - 1))}
+            disabled={page <= 1}
+            style={{
+              margin: "0 8px",
+              borderRadius: "6px",
+              border: "none",
+              padding: "6px 12px",
+              cursor: page <= 1 ? "not-allowed" : "pointer",
+              background: "transparent"
+            }}
+          >
+            ◀ Prev
+          </button>
+
           {(() => {
             const maxButtons = 5;
             let start = Math.max(1, page - Math.floor(maxButtons / 2));
@@ -619,6 +638,21 @@ const App = () => {
               </button>
             ));
           })()}
+
+          <button
+            onClick={() => setPage(Math.min(totalPages, page + 1))}
+            disabled={page >= totalPages}
+            style={{
+              margin: "0 8px",
+              borderRadius: "6px",
+              border: "none",
+              padding: "6px 12px",
+              cursor: page >= totalPages ? "not-allowed" : "pointer",
+              background: "transparent"
+            }}
+          >
+            Next ▶
+          </button>
         </div>
       )}
 

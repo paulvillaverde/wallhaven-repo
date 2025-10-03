@@ -1,67 +1,50 @@
 // services/wallhaven.js
-const BASE = "https://wallhaven.cc/api/v1";
+const PROD_BASE = "https://wallhaven.cc/api/v1";
+const DEV_BASE  = "/wh/api/v1";
+const BASE = (typeof import.meta !== "undefined" && import.meta.env?.DEV)
+  ? DEV_BASE
+  : PROD_BASE;
 
-/**
- * Search wallpapers with resilient fetch:
- * 1) Direct request (works if CORS is allowed)
- * 2) Fallback proxies if needed
- */
 export async function searchWallpapers({
   q = "",
   page = 1,
   per_page = 24,
-  apikey,
-  sorting,
-  ratios,
-  atleast,
-  colors,
-  purity,        // "100" (SFW) | "110" (SFW + sketchy). NSFW needs key + allowed.
-  categories,    // e.g. "100" general only
-  order,         // "desc" | "asc"
-  topRange,      // "1d","3d","1w","1M","3M","6M","1y" (only for toplist)
+  apiKey,              // <-- rename (camelCase)
+  sorting = "toplist",
+  order = "asc",
+  topRange = "3M",
+  purity = "100",      // SFW only
+  categories = "100",  // General only
+  ratios, atleast, colors,
 } = {}) {
-  const apiUrl = new URL(`${BASE}/search`);
-  apiUrl.searchParams.set("q", q);
-  apiUrl.searchParams.set("page", page);
-  apiUrl.searchParams.set("per_page", per_page);
+  const url = new URL(`${BASE}/search`, window.location.origin);
+  url.searchParams.set("q", q);
+  url.searchParams.set("page", String(page));
+  url.searchParams.set("per_page", String(per_page));
+  url.searchParams.set("sorting", sorting);
+  url.searchParams.set("order", order);
+  url.searchParams.set("topRange", topRange);
+  url.searchParams.set("purity", String(purity));
+  url.searchParams.set("categories", String(categories));
+  if (ratios)  url.searchParams.set("ratios", ratios);
+  if (atleast) url.searchParams.set("atleast", atleast);
+  if (colors)  url.searchParams.set("colors", colors);
 
-  // Only add provided filters
-  const params = { sorting, ratios, atleast, colors, purity, categories, order, topRange };
-  Object.entries(params).forEach(([k, v]) => {
-    if (v !== undefined && v !== null && v !== "") apiUrl.searchParams.set(k, String(v));
-  });
-
-  if (apikey) apiUrl.searchParams.set("apikey", apikey);
-
-  // Try direct first (Wallhaven API typically allows CORS),
-  // then fall back to a couple of proxies if your environment blocks it.
-  const attempts = [
-    apiUrl.toString(),
-    // AllOrigins raw
-    `https://api.allorigins.win/raw?url=${encodeURIComponent(apiUrl.toString())}`,
-    // Isomorphic-git CORS passthrough
-    `https://cors.isomorphic-git.org/${apiUrl.toString()}`,
-  ];
-
-  const errors = [];
-  for (const url of attempts) {
-    try {
-      // Helpful in DevTools
-      // eslint-disable-next-line no-console
-      console.log("[wallhaven] fetching:", url);
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      // Wallhaven returns { data: [...] }
-      if (!data || typeof data !== "object" || !("data" in data)) {
-        throw new Error("Invalid API response shape");
-      }
-      return data;
-    } catch (e) {
-      errors.push(`${url} → ${e.message}`);
-    }
+  // ❌ DO NOT append ?apikey=... (401 if empty/invalid)
+  const headers = {};
+  if (apiKey && String(apiKey).trim().length > 0) {
+    headers["X-API-Key"] = String(apiKey).trim();   // ✅ header-based auth
   }
 
-  // If all attempts failed, surface a detailed error for debugging
-  throw new Error(`All fetch attempts failed:\n${errors.join("\n")}`);
+  const res = await fetch(url.toString(), { headers });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+  const text = await res.text();
+  let data = JSON.parse(text);
+  if (data && data.contents) data = JSON.parse(data.contents); // proxy wrapper tolerance
+
+  if (!data || !data.data) throw new Error("Unexpected API response.");
+  return data; // { data, meta }
 }
+
+
