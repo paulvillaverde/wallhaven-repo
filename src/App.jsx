@@ -1,5 +1,10 @@
 import React, { useState, useEffect } from "react";
 import { searchWallpapers } from "./services/wallhaven";
+import { useAuth } from "./hooks/useAuth";
+import Register from "./auth/Register";
+import Login from "./auth/Login";
+import SignOutButton from "./auth/SignOutButton";
+import AccountSidebar from "./components/AccountSidebar";
 
 /* ===================== Constants ===================== */
 
@@ -249,6 +254,11 @@ const App = () => {
   // Add this state to store total pages
   const [totalPages, setTotalPages] = useState(1);
 
+  const { user, setUser } = useAuth();
+  const [showLogin, setShowLogin] = useState(false);
+  const [showRegister, setShowRegister] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
   const apiKey = "JKtOMDLrvv6sLV5C0GYxyRLUlpPGWAry";
 
   const buildParams = () => {
@@ -382,20 +392,34 @@ const App = () => {
           </div>
         </div>
 
-        <div className="nav__search">
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <circle cx="11" cy="11" r="8" stroke="currentColor" strokeWidth="2" fill="none" />
-            <path d="M21 21l-3.5-3.5" stroke="currentColor" strokeWidth="2" fill="none" />
-          </svg>
-          <input
-            type="search"
-            placeholder="Search for nature, abstract, space..."
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-          />
+        <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
+          {user ? (
+            <>
+              <button
+                className="account-btn"
+                onClick={() => setSidebarOpen(true)}
+                aria-haspopup="dialog"
+                title="Open account"
+              >
+                <span className="account-avatar-sm">{(user.name || user.email || 'U')[0].toUpperCase()}</span>
+                <span className="account-label">Hi, {user.name || user.email}</span>
+              </button>
+              <SignOutButton onSignedOut={() => setUser(null)} />
+            </>
+          ) : (
+            <>
+              <button onClick={() => { setShowLogin(v => !v); setShowRegister(false); }} className="btn btn-outline">Sign in</button>
+              <button onClick={() => { setShowRegister(v => !v); setShowLogin(false); }} className="btn btn-primary">Register</button>
+            </>
+          )}
         </div>
       </div>
+
+      {showLogin && <Login onSignedIn={(u) => { setUser(u); setShowLogin(false); }} />}
+      {showRegister && <Register onSignedIn={(u) => { setUser(u); setShowRegister(false); }} />}
+
+      {/* account sidebar */}
+      <AccountSidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} user={user} />
 
       {/* === categories row (centered, no numbers) === */}
       <div className="cats">
