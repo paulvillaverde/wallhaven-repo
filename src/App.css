@@ -410,7 +410,39 @@
 }
 .muted { color: #6b7280; }
 
-@media (max-width: 640px) {
-  .auth-card { margin: 12px; padding: 16px; }
-  .auth-title { font-size: 1rem; }
+/* Modal overlay + center panel */
+.account-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  z-index: 2000;
+}
+
+.account-modal {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2001;
+  padding: 24px;
+  box-sizing: border-box;
+}
+
+.account-modal-panel {
+  width: 760px;
+  max-width: calc(100% - 48px);
+  max-height: calc(100vh - 80px);
+  background: #fff;
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 18px 60px rgba(15,20,30,0.18);
+  overflow: auto;
+  box-sizing: border-box;
+  position: relative;
+}
+
+/* small screens */
+@media (max-width: 720px) {
+  .account-modal-panel { width: 100%; height: 100%; border-radius: 0; padding: 16px; }
 }

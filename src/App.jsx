@@ -4,7 +4,7 @@ import { useAuth } from "./hooks/useAuth";
 import Register from "./auth/Register";
 import Login from "./auth/Login";
 import SignOutButton from "./auth/SignOutButton";
-import AccountSidebar from "./components/AccountSidebar";
+import AccountSidebar from "./components/AccountModal";
 
 /* ===================== Constants ===================== */
 
