@@ -92,4 +92,52 @@ app.get('/api/auth/me', (req, res) => {
   });
 });
 
+// Add endpoints for favorites (requires auth/session)
+app.get('/api/user/favorites', (req, res) => {
+  if (!req.session?.user) return res.status(200).json({ ok: true, favorites: [] });
+  const userId = req.session.user.id;
+  db.all(
+    `SELECT id, image_id, title, url, thumb, dimension_x, dimension_y, created_at
+     FROM favorites WHERE user_id = ? ORDER BY created_at DESC`,
+    [userId],
+    (err, rows) => {
+      if (err) return res.status(500).json({ ok: false, error: 'DB error' });
+      return res.json({ ok: true, favorites: rows });
+    }
+  );
+});
+
+// Add favorite
+app.post('/api/user/favorites', (req, res) => {
+  if (!req.session?.user) return res.status(401).json({ ok: false, error: 'Not authenticated' });
+  const userId = req.session.user.id;
+  const { image_id, title, url, thumb, dimension_x, dimension_y } = req.body;
+  if (!image_id) return res.status(400).json({ ok: false, error: 'image_id required' });
+
+  const stmt = db.prepare(
+    `INSERT OR IGNORE INTO favorites
+     (user_id, image_id, title, url, thumb, dimension_x, dimension_y)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
+  );
+  stmt.run(userId, image_id, title || null, url || null, thumb || null, dimension_x || null, dimension_y || null, function (err) {
+    if (err) return res.status(500).json({ ok: false, error: 'DB error' });
+    // return created/ignored row
+    db.get('SELECT id, image_id, title, url, thumb, dimension_x, dimension_y, created_at FROM favorites WHERE user_id = ? AND image_id = ?', [userId, image_id], (e, row) => {
+      if (e) return res.status(500).json({ ok: false, error: 'DB error' });
+      return res.json({ ok: true, favorite: row });
+    });
+  });
+});
+
+// Remove favorite
+app.delete('/api/user/favorites/:imageId', (req, res) => {
+  if (!req.session?.user) return res.status(401).json({ ok: false, error: 'Not authenticated' });
+  const userId = req.session.user.id;
+  const imageId = req.params.imageId;
+  db.run('DELETE FROM favorites WHERE user_id = ? AND image_id = ?', [userId, imageId], function (err) {
+    if (err) return res.status(500).json({ ok: false, error: 'DB error' });
+    return res.json({ ok: true, deleted: this.changes });
+  });
+});
+
 app.listen(PORT, () => console.log(`Auth server running on ${PORT}`));

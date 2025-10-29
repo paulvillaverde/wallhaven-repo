@@ -380,6 +380,57 @@ const App = () => {
     setSelectedIndex(prevIndex);
   };
 
+  // Replace the inline fav click handler with this helper and update UI usage
+  async function toggleFavorite(img) {
+    // optimistic toggle
+    const prev = img.isFav;
+    img.isFav = !prev;
+    setImages([...images]);
+
+    try {
+      if (!img.isFav) {
+        // removed -> call DELETE
+        const res = await fetch(`http://localhost:4000/api/user/favorites/${encodeURIComponent(img.id)}`, {
+          method: 'DELETE',
+          credentials: 'include'
+        });
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error || 'Failed to remove favorite');
+      } else {
+        // added -> POST
+        const res = await fetch('http://localhost:4000/api/user/favorites', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            image_id: img.id,
+            title: img.id,
+            url: img.path || img.url || img.short_url || null,
+            thumb: img.thumbs?.small || img.thumbs?.large || null,
+            dimension_x: img.dimension_x || null,
+            dimension_y: img.dimension_y || null
+          })
+        });
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error || 'Failed to add favorite');
+      }
+    } catch (err) {
+      // revert on error
+      img.isFav = prev;
+      setImages([...images]);
+      console.error('Favorite toggle failed', err);
+      // optionally show a toast / set error state
+    }
+  }
+
+  function getInitials(user) {
+    const raw = (user?.name || user?.email || '').trim();
+    if (!raw) return 'U';
+    const parts = raw.split(/[\s.@_+-]+/).filter(Boolean);
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+    return (parts[0][0] + parts[1][0]).toUpperCase();
+  }
+
   return (
     <div className="page">
       {/* === top navbar (logo + search) === */}
@@ -401,8 +452,13 @@ const App = () => {
                 aria-haspopup="dialog"
                 title="Open account"
               >
-                <span className="account-avatar-sm">{(user.name || user.email || 'U')[0].toUpperCase()}</span>
-                <span className="account-label">Hi, {user.name || user.email}</span>
+                <span className="account-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true" focusable="false">
+                    <circle cx="12" cy="12" r="10" fill="none" />
+                    <circle cx="12" cy="8" r="3" fill="currentColor" />
+                    <path d="M4 20c0-3.314 3.582-6 8-6s8 2.686 8 6" fill="currentColor" />
+                  </svg>
+                </span>
               </button>
               <SignOutButton onSignedOut={() => setUser(null)} />
             </>
@@ -566,8 +622,12 @@ const App = () => {
                   className={`fav-btn ${img.isFav ? "active" : ""}`}
                   onClick={(e) => {
                     e.stopPropagation();
-                    img.isFav = !img.isFav; // demo-only
-                    setImages([...images]); // re-render
+                    // require signed in user
+                    if (!user) {
+                      setShowLogin(true);
+                      return;
+                    }
+                    toggleFavorite(img);
                   }}
                 >
                   {img.isFav ? "❤️" : "🤍"}
