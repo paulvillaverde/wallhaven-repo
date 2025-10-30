@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { searchWallpapers } from "./services/wallhaven";
 import { useAuth } from "./hooks/useAuth";
+import Modal from "./components/Modal";
 import Register from "./auth/Register";
 import Login from "./auth/Login";
 import SignOutButton from "./auth/SignOutButton";
@@ -255,6 +256,8 @@ const App = () => {
   const [totalPages, setTotalPages] = useState(1);
 
   const { user, setUser } = useAuth();
+
+  //login and register modals
   const [showLogin, setShowLogin] = useState(false);
   const [showRegister, setShowRegister] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -438,7 +441,7 @@ const App = () => {
         <div className="nav__left">
           <div className="logo-badge">W</div>
           <div className="nav__brand">
-            <div className="nav__title">Wallheaven</div>
+            <div className="nav__title">WallHaven</div>
             <div className="nav__subtitle">Premium wallpapers</div>
           </div>
         </div>
@@ -471,12 +474,43 @@ const App = () => {
         </div>
       </div>
 
-      {showLogin && <Login onSignedIn={(u) => { setUser(u); setShowLogin(false); }} />}
-      {showRegister && <Register onSignedIn={(u) => { setUser(u); setShowRegister(false); }} />}
+      {showLogin && (
+        <Modal onClose={() => setShowLogin(false)} ariaLabel="Sign In">
+          <Login
+            onSignedIn={(user) => {
+              setUser(user);
+              setShowLogin(false);
+            }}
+            onClose={() => setShowLogin(false)}
+            onSwitchToRegister={() => {
+              setShowLogin(false);
+              setShowRegister(true);
+            }}
+          />
+        </Modal>
+      )}
+
+      {showRegister && (
+        <Modal onClose={() => setShowRegister(false)} ariaLabel="Register">
+          <Register
+            onSignedIn={(user) => {
+              setUser(user);
+              setShowRegister(false);
+            }}
+            onClose={() => setShowRegister(false)}
+            onSwitchToLogin={() => {
+              setShowRegister(false);
+              setShowLogin(true);
+            }}
+          />
+        </Modal>
+      )}
+
 
       {/* account sidebar */}
       <AccountSidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} user={user} />
 
+      
       {/* === categories row (centered, no numbers) === */}
       <div className="cats">
         {TOP_CATS.map((c) => (

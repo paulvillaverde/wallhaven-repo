@@ -1,73 +1,100 @@
 import React, { useState } from "react";
 
-export default function Register({ onSignedIn }) {
+const Register = ({ onSignedIn, onClose, onSwitchToLogin }) => {
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [name, setName] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  async function submit(e) {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
     setLoading(true);
+
     try {
       const res = await fetch("http://localhost:4000/api/auth/register", {
         method: "POST",
-        credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password, name })
+        credentials: "include",
+        body: JSON.stringify({ name, email, password }),
       });
       const data = await res.json();
+
       if (!data.ok) throw new Error(data.error || "Registration failed");
-      onSignedIn && onSignedIn(data.user);
+      onSignedIn?.(data.user);
     } catch (err) {
       setError(err.message);
     } finally {
       setLoading(false);
     }
-  }
+  };
 
   return (
-    <div className="auth-card">
-      <h3 className="auth-title">Create account</h3>
-      <form onSubmit={submit} className="auth-form">
-        <label className="auth-label">Name (optional)</label>
-        <input
-          className="auth-input"
-          placeholder="Your name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-        />
+    <>
+      <button className="modal__close" onClick={onClose} aria-label="Close">
+        ✕
+      </button>
 
-        <label className="auth-label">Email</label>
-        <input
-          className="auth-input"
-          placeholder="you@example.com"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          type="email"
-          required
-        />
+      <h2 className="auth-modal__title">Create Account</h2>
+      <p className="auth-modal__subtitle">Join us today! Fill in the details below.</p>
 
-        <label className="auth-label">Password</label>
-        <input
-          className="auth-input"
-          placeholder="Create a strong password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          type="password"
-          required
-        />
+      <form onSubmit={handleSubmit} className="auth-form">
+        {error && <div className="auth-error">{error}</div>}
 
-        <div className="auth-actions">
-          <button className="btn btn-primary" type="submit" disabled={loading}>
-            {loading ? "Creating…" : "Create account"}
-          </button>
+        <div className="form-group">
+          <label htmlFor="register-name">Name</label>
+          <input
+            id="register-name"
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Enter your name"
+            required
+          />
         </div>
 
-        {error && <div className="auth-error">{error}</div>}
+        <div className="form-group">
+          <label htmlFor="register-email">Email</label>
+          <input
+            id="register-email"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="Enter your email"
+            required
+          />
+        </div>
+
+        <div className="form-group">
+          <label htmlFor="register-password">Password</label>
+          <input
+            id="register-password"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Create a password"
+            required
+          />
+        </div>
+
+        <button type="submit" className="btn btn--primary btn--full" disabled={loading}>
+          {loading ? "Creating account..." : "Sign Up"}
+        </button>
       </form>
-    </div>
+
+      <div className="auth-footer">
+        Already have an account?{" "}
+        <button
+          type="button"
+          className="link-btn"
+          onClick={onSwitchToLogin}
+        >
+          Sign in
+        </button>
+      </div>
+    </>
   );
-}
+};
+
+export default Register;

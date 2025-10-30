@@ -1,64 +1,87 @@
 import React, { useState } from "react";
 
-export default function Login({ onSignedIn }) {
+const Login = ({ onSignedIn, onClose, onSwitchToRegister }) => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  async function submit(e) {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
     setLoading(true);
+
     try {
       const res = await fetch("http://localhost:4000/api/auth/login", {
         method: "POST",
-        credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password })
+        credentials: "include",
+        body: JSON.stringify({ email, password }),
       });
       const data = await res.json();
+
       if (!data.ok) throw new Error(data.error || "Login failed");
-      onSignedIn && onSignedIn(data.user);
+      onSignedIn?.(data.user);
     } catch (err) {
       setError(err.message);
     } finally {
       setLoading(false);
     }
-  }
+  };
 
   return (
-    <div className="auth-card">
-      <h3 className="auth-title">Sign in</h3>
-      <form onSubmit={submit} className="auth-form">
-        <label className="auth-label">Email</label>
-        <input
-          className="auth-input"
-          placeholder="you@example.com"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          type="email"
-          required
-        />
+    <>
+      <button className="modal__close" onClick={onClose} aria-label="Close">
+        ✕
+      </button>
 
-        <label className="auth-label">Password</label>
-        <input
-          className="auth-input"
-          placeholder="Password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          type="password"
-          required
-        />
+      <h2 className="auth-modal__title">Sign In</h2>
+      <p className="auth-modal__subtitle">Welcome back! Please enter your details.</p>
 
-        <div className="auth-actions">
-          <button className="btn btn-primary" type="submit" disabled={loading}>
-            {loading ? "Signing in…" : "Sign in"}
-          </button>
+      <form onSubmit={handleSubmit} className="auth-form">
+        {error && <div className="auth-error">{error}</div>}
+
+        <div className="form-group">
+          <label htmlFor="login-email">Email</label>
+          <input
+            id="login-email"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="Enter your email"
+            required
+          />
         </div>
 
-        {error && <div className="auth-error">{error}</div>}
+        <div className="form-group">
+          <label htmlFor="login-password">Password</label>
+          <input
+            id="login-password"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Enter your password"
+            required
+          />
+        </div>
+
+        <button type="submit" className="btn btn--primary btn--full" disabled={loading}>
+          {loading ? "Signing in..." : "Sign In"}
+        </button>
       </form>
-    </div>
+
+      <div className="auth-footer">
+        Don't have an account?{" "}
+        <button
+          type="button"
+          className="link-btn"
+          onClick={onSwitchToRegister}
+        >
+          Sign up
+        </button>
+      </div>
+    </>
   );
-}
+};
+
+export default Login;
