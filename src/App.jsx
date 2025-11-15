@@ -1,15 +1,14 @@
-import React, { useState, useEffect } from "react";
+// App.jsx
+import React, { useEffect, useRef, useState } from "react";
 import { searchWallpapers } from "./services/wallhaven";
 import { useAuth } from "./hooks/useAuth";
 import Modal from "./components/Modal";
 import Register from "./auth/Register";
 import Login from "./auth/Login";
 import SignOutButton from "./auth/SignOutButton";
-import AccountSidebar from "./components/AccountModal";
 
 /* ===================== Constants ===================== */
 
-// Categories (top row)
 const TOP_CATS = [
   "All Wallpapers",
   "Nature",
@@ -21,7 +20,6 @@ const TOP_CATS = [
   "Technology",
 ];
 
-// Filters
 const SORT = [
   { label: "Most Popular", value: "toplist" },
   { label: "Latest", value: "date_added" },
@@ -43,6 +41,14 @@ const COLORS = [
   { name: "White", hex: "ffffff" },
 ];
 
+// Wallhaven base
+const PROD_BASE = "https://wallhaven.cc/api/v1";
+const DEV_BASE = "/wh/api/v1";
+const WH_BASE =
+  typeof import.meta !== "undefined" && import.meta.env?.DEV
+    ? DEV_BASE
+    : PROD_BASE;
+
 /* ===================== Utils ===================== */
 
 function formatBytes(bytes) {
@@ -55,22 +61,25 @@ function formatBytes(bytes) {
   } while (bytes >= 1024 && i < u.length - 1);
   return `${bytes.toFixed(1)}${u[i]}`;
 }
+const toNum = (v, d = 0) =>
+  (typeof v === "number" && !Number.isNaN(v) ? v : Number(v ?? d) || d);
 
-// derive badges (kept in case you re-enable later)
-const isRecent = (iso, days = 14) =>
-  iso && Date.now() - new Date(iso).getTime() < days * 24 * 60 * 60 * 1000;
-
-const deriveBadges = (w) => {
-  const trending =
-    isRecent(w.created_at, 14) &&
-    ((w.views ?? 0) >= 5000 || (w.favorites ?? 0) >= 100);
-
-  const editorsPick =
-    ((w.dimension_x ?? 0) >= 3840 || (w.dimension_y ?? 0) >= 2160) &&
-    (w.favorites ?? 0) >= 250;
-
-  return { trending, editorsPick };
-};
+async function fetchWithRetry(url, options = {}, tries = 3, baseDelay = 400) {
+  for (let i = 0; i < tries; i++) {
+    try {
+      const res = await fetch(url, options);
+      if (res.ok) return res;
+      if (res.status === 429 || (res.status >= 500 && res.status <= 599)) {
+        await new Promise((r) => setTimeout(r, baseDelay * Math.pow(2, i)));
+        continue;
+      }
+      throw new Error(`${res.status} ${res.statusText}`);
+    } catch (e) {
+      if (i === tries - 1) throw e;
+      await new Promise((r) => setTimeout(r, baseDelay * Math.pow(2, i)));
+    }
+  }
+}
 
 /* ===================== Modal ===================== */
 
@@ -80,12 +89,10 @@ function ImageModal({ image, onClose, onNext, onPrev, query }) {
   const isPortrait = (image?.dimension_y ?? 0) > (image?.dimension_x ?? 0);
   const is4k =
     (image?.dimension_x ?? 0) >= 3840 || (image?.dimension_y ?? 0) >= 2160;
-  const category = (image?.category || "general").replace(
-    /^\w/,
-    (c) => c.toUpperCase()
+  const category = (image?.category || "general").replace(/^\w/, (c) =>
+    c.toUpperCase()
   );
 
-  // keyboard: Esc to close, arrows to navigate
   const onKey = React.useCallback(
     (e) => {
       if (e.key === "Escape") onClose?.();
@@ -105,9 +112,7 @@ function ImageModal({ image, onClose, onNext, onPrev, query }) {
       <div className="modal__backdrop" onClick={onClose} />
 
       <div className="modal__panel">
-        {/* Left: full image with containment (keeps orientation) */}
         <div className="detail__left" style={{ position: "relative" }}>
-          {/* Prev Button */}
           <button
             className="nav-btn nav-btn--left"
             onClick={(e) => {
@@ -118,12 +123,13 @@ function ImageModal({ image, onClose, onNext, onPrev, query }) {
           >
             ◀
           </button>
-          <img
+
+        <img
             className="detail__image"
             src={image.path || image.thumbs?.large || image.url}
             alt=""
           />
-          {/* Next Button */}
+
           <button
             className="nav-btn nav-btn--right"
             onClick={(e) => {
@@ -136,7 +142,6 @@ function ImageModal({ image, onClose, onNext, onPrev, query }) {
           </button>
         </div>
 
-        {/* Top-right actions */}
         <div className="modal__actions">
           <button className="btn btn--primary">Save</button>
           <button
@@ -158,7 +163,6 @@ function ImageModal({ image, onClose, onNext, onPrev, query }) {
           </button>
         </div>
 
-        {/* Right: details */}
         <aside className="detail__right">
           <h2 className="detail__title">
             {image.id ? `#${image.id}` : "Wallpaper"}
@@ -198,7 +202,11 @@ function ImageModal({ image, onClose, onNext, onPrev, query }) {
 
           <div className="detail__section">
             <h3>Download Options</h3>
-            <a className="btn btn--download" href={image.path || image.url} download>
+            <a
+              className="btn btn--download"
+              href={image.path || image.url}
+              download
+            >
               <span className="btn__icon">⬇</span>
               Download {is4k ? "4K" : "Full"}
               <span className="btn__meta">{formatBytes(image.file_size)}</span>
@@ -252,15 +260,27 @@ const App = () => {
   const [quality, setQuality] = useState(QUALITY[0]);
   const [color, setColor] = useState(COLORS[0]);
 
-  // Add this state to store total pages
   const [totalPages, setTotalPages] = useState(1);
 
   const { user, setUser } = useAuth();
 
-  //login and register modals
+  // auth modals
   const [showLogin, setShowLogin] = useState(false);
   const [showRegister, setShowRegister] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // profile screen
+  const [showProfile, setShowProfile] = useState(false);
+  const [profileTab, setProfileTab] = useState("favorites"); // "favorites" | "about"
+  const [favImages, setFavImages] = useState([]);
+  const [loadingFavs, setLoadingFavs] = useState(false);
+  const [favError, setFavError] = useState("");
+
+  // avatar
+  const [avatarUrl, setAvatarUrl] = useState(null);
+  const avatarInputRef = useRef(null);
+
+  // live metadata cache (keeps counts stable)
+  const metaCacheRef = useRef(new Map());
 
   const apiKey = "JKtOMDLrvv6sLV5C0GYxyRLUlpPGWAry";
 
@@ -276,18 +296,15 @@ const App = () => {
     else if (quality === "Mobile Ready") atleast = "1080x1920";
 
     return {
-      sorting: sortBy, // toplist | date_added | views | favorites | random
-      ratios, // comma-separated
-      atleast, // resolution floor
-      colors: color.hex ?? undefined, // hex w/o #
+      sorting: sortBy,
+      ratios,
+      atleast,
+      colors: color.hex ?? undefined,
       purity: safeMode ? "100" : "110",
-      // categories: "100",
-      // order: "desc",
     };
   };
 
-  // Async fetch function
-  const fetchWallpapers = async (searchQuery, currentPage) => {
+  async function fetchWallpapersFeed(searchQuery, currentPage) {
     setLoading(true);
     setError("");
     try {
@@ -299,43 +316,69 @@ const App = () => {
         apikey: apiKey,
         ...params,
       });
-      setImages(data?.data || []);
-      setTotalPages(data?.meta?.last_page || 1); // <-- update here
+
+      const list = Array.isArray(data?.data) ? data.data : [];
+      if (list.length) {
+        const cache = metaCacheRef.current;
+        for (const it of list) {
+          if (!it?.id) continue;
+          const prev = cache.get(it.id) || {};
+          cache.set(it.id, {
+            ...prev,
+            favorites: toNum(it.favorites, prev.favorites),
+            views: toNum(it.views, prev.views),
+            uploader: it.uploader || prev.uploader,
+            dimension_x: it.dimension_x ?? prev.dimension_x,
+            dimension_y: it.dimension_y ?? prev.dimension_y,
+            resolution:
+              it.resolution ||
+              prev.resolution ||
+              (it.dimension_x && it.dimension_y
+                ? `${it.dimension_x}×${it.dimension_y}`
+                : undefined),
+            category: it.category ?? prev.category,
+            file_type: it.file_type ?? prev.file_type,
+            thumbs: it.thumbs || prev.thumbs,
+            path: it.path || prev.path,
+          });
+        }
+      }
+
+      setImages(list);
+      setTotalPages(data?.meta?.last_page || 1);
     } catch (err) {
-      console.error("[fetchWallpapers]", err);
       setImages([]);
       setError(err?.message || "Failed to fetch wallpapers. Please try again.");
       setTotalPages(1);
     } finally {
       setLoading(false);
     }
-  };
+  }
 
-  // initial load
   useEffect(() => {
-    fetchWallpapers("", 1); // empty query = all wallpapers
+    fetchWallpapersFeed("", 1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // page change (skip the very first render — initial load does an explicit fetch)
-  const initialPageLoad = React.useRef(true);
+  const initialPageLoad = useRef(true);
   useEffect(() => {
     if (initialPageLoad.current) {
       initialPageLoad.current = false;
       return;
     }
-    fetchWallpapers(query, page);
+    fetchWallpapersFeed(query, page);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page]);
 
   const applyFilters = () => {
     setPage(1);
-    fetchWallpapers(query, 1);
+    fetchWallpapersFeed(query, 1);
     setOpenDD(false);
   };
 
   const handleSearch = async () => {
     setPage(1);
-    await fetchWallpapers(query, 1);
+    await fetchWallpapersFeed(query, 1);
   };
 
   const resetFilters = () => {
@@ -345,7 +388,6 @@ const App = () => {
     setColor(COLORS[0]);
   };
 
-  // close dropdown on outside click
   useEffect(() => {
     if (!openDD) return;
     const close = (e) => {
@@ -358,7 +400,6 @@ const App = () => {
     return () => document.removeEventListener("mousedown", close);
   }, [openDD]);
 
-  // Modal helpers (now correctly inside component)
   const openModal = (img, index) => {
     setSelected(img);
     setSelectedIndex(index);
@@ -383,60 +424,400 @@ const App = () => {
     setSelectedIndex(prevIndex);
   };
 
-  // Replace the inline fav click handler with this helper and update UI usage
+  // favorites toggle (shared)
   async function toggleFavorite(img) {
-    // optimistic toggle
     const prev = img.isFav;
     img.isFav = !prev;
-    setImages([...images]);
+    setImages((cur) => [...cur]);
+    setFavImages((cur) => [...cur]);
 
     try {
       if (!img.isFav) {
-        // removed -> call DELETE
-        const res = await fetch(`http://localhost:4000/api/user/favorites/${encodeURIComponent(img.id)}`, {
-          method: 'DELETE',
-          credentials: 'include'
-        });
+        const res = await fetch(
+          `http://localhost:4000/api/user/favorites/${encodeURIComponent(
+            img.id
+          )}`,
+          { method: "DELETE", credentials: "include" }
+        );
         const data = await res.json();
-        if (!data.ok) throw new Error(data.error || 'Failed to remove favorite');
+        if (!data.ok) throw new Error(data.error || "Failed to remove favorite");
+        setFavImages((cur) => cur.filter((x) => x.id !== img.id));
       } else {
-        // added -> POST
-        const res = await fetch('http://localhost:4000/api/user/favorites', {
-          method: 'POST',
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
+        const res = await fetch("http://localhost:4000/api/user/favorites", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             image_id: img.id,
             title: img.id,
             url: img.path || img.url || img.short_url || null,
             thumb: img.thumbs?.small || img.thumbs?.large || null,
             dimension_x: img.dimension_x || null,
-            dimension_y: img.dimension_y || null
-          })
+            dimension_y: img.dimension_y || null,
+          }),
         });
         const data = await res.json();
-        if (!data.ok) throw new Error(data.error || 'Failed to add favorite');
+        if (!data.ok) throw new Error(data.error || "Failed to add favorite");
       }
     } catch (err) {
-      // revert on error
       img.isFav = prev;
-      setImages([...images]);
-      console.error('Favorite toggle failed', err);
-      // optionally show a toast / set error state
+      setImages((cur) => [...cur]);
+      setFavImages((cur) => [...cur]);
     }
   }
 
-  function getInitials(user) {
-    const raw = (user?.name || user?.email || '').trim();
-    if (!raw) return 'U';
+  // profile helpers
+  function getInitials(u) {
+    const raw = (u?.name || u?.email || "").trim();
+    if (!raw) return "U";
     const parts = raw.split(/[\s.@_+-]+/).filter(Boolean);
     if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
     return (parts[0][0] + parts[1][0]).toUpperCase();
   }
 
+  async function fetchWHDetails(id) {
+    const headers = {};
+    if (apiKey && String(apiKey).trim()) headers["X-API-Key"] = apiKey;
+    const res = await fetchWithRetry(`${WH_BASE}/w/${id}`, { headers }, 3, 500);
+    const json = await res.json();
+    return json?.data || {};
+  }
+
+  function mergeWithCache(id, baseObj = {}, detail = {}) {
+    const cache = metaCacheRef.current.get(id) || {};
+    const dimension_x =
+      detail.dimension_x ?? baseObj.dimension_x ?? cache.dimension_x ?? null;
+    const dimension_y =
+      detail.dimension_y ?? baseObj.dimension_y ?? cache.dimension_y ?? null;
+
+    return {
+      ...baseObj,
+      ...detail,
+      id,
+      isFav: true,
+      thumbs: detail.thumbs || baseObj.thumbs || cache.thumbs,
+      path: detail.path || baseObj.path || cache.path || baseObj.url || null,
+      dimension_x,
+      dimension_y,
+      resolution:
+        detail.resolution ||
+        baseObj.resolution ||
+        cache.resolution ||
+        (dimension_x && dimension_y ? `${dimension_x}×${dimension_y}` : undefined),
+      favorites: toNum(
+        detail.favorites,
+        toNum(baseObj.favorites, toNum(cache.favorites, 0))
+      ),
+      views: toNum(detail.views, toNum(baseObj.views, toNum(cache.views, 0))),
+      uploader:
+        detail.uploader || baseObj.uploader || cache.uploader || {
+          username: "Unknown",
+        },
+      file_type: detail.file_type ?? baseObj.file_type ?? cache.file_type,
+      category: detail.category ?? baseObj.category ?? cache.category,
+    };
+  }
+
+  async function hydrateFavorites(rawFavs) {
+    const out = [];
+    const step = 6;
+    for (let i = 0; i < rawFavs.length; i += step) {
+      const chunk = rawFavs.slice(i, i + step);
+      const details = await Promise.all(
+        chunk.map(async (f) => {
+          const id = f.image_id || f.id;
+          try {
+            const d = await fetchWHDetails(id);
+            const cache = metaCacheRef.current.get(id) || {};
+            metaCacheRef.current.set(id, {
+              ...cache,
+              favorites: toNum(d.favorites, cache.favorites),
+              views: toNum(d.views, cache.views),
+              uploader: d.uploader || cache.uploader,
+              dimension_x: d.dimension_x ?? cache.dimension_x,
+              dimension_y: d.dimension_y ?? cache.dimension_y,
+              resolution:
+                d.resolution ||
+                cache.resolution ||
+                (d.dimension_x && d.dimension_y
+                  ? `${d.dimension_x}×${d.dimension_y}`
+                  : undefined),
+              category: d.category ?? cache.category,
+              file_type: d.file_type ?? cache.file_type,
+              thumbs: d.thumbs || cache.thumbs,
+              path: d.path || cache.path,
+            });
+            return mergeWithCache(id, f, d);
+          } catch {
+            return mergeWithCache(id, f, {});
+          }
+        })
+      );
+      out.push(...details);
+    }
+    return out;
+  }
+
+  async function loadFavoritesScreen() {
+    if (!user) return;
+    setProfileTab("favorites");
+    setFavError("");
+    setLoadingFavs(true);
+    let cancelled = false;
+    try {
+      const r = await fetch("http://localhost:4000/api/user/favorites", {
+        credentials: "include",
+      });
+      const j = await r.json();
+      const list = Array.isArray(j?.favorites) ? j.favorites : [];
+      const hydrated = await hydrateFavorites(list);
+      if (!cancelled) setFavImages(hydrated);
+    } catch (e) {
+      if (!cancelled) {
+        setFavImages([]);
+        setFavError(e?.message || "Failed to load favorites.");
+      }
+    } finally {
+      if (!cancelled) setLoadingFavs(false);
+    }
+    return () => {
+      cancelled = true;
+    };
+  }
+
+  useEffect(() => {
+    if (showProfile) loadFavoritesScreen();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showProfile]);
+
+  // persist/load avatar per user
+  useEffect(() => {
+    if (!user) {
+      setAvatarUrl(null);
+      return;
+    }
+    const key = `avatar:${user.email || user.name || "user"}`;
+    const saved = localStorage.getItem(key);
+    if (saved) setAvatarUrl(saved);
+  }, [user]);
+
+  const triggerAvatarPicker = () => {
+    avatarInputRef.current?.click();
+  };
+
+  const handleAvatarSelected = (e) => {
+    const file = e.target.files?.[0];
+    if (!file || !user) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result;
+      setAvatarUrl(dataUrl);
+      const key = `avatar:${user.email || user.name || "user"}`;
+      try {
+        localStorage.setItem(key, dataUrl);
+      } catch {}
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // profile screen (full page)
+  if (showProfile) {
+    return (
+      <div className="profile-page">
+        <div className="profile-container">
+          <div className="profile-header">
+            <div className="profile-header__top">
+              <button
+                className="btn btn-outline btn-small"
+                onClick={() => setShowProfile(false)}
+                title="Back to feed"
+              >
+                ← Back
+              </button>
+              <SignOutButton
+                onSignedOut={() => {
+                  setUser(null);
+                  setShowProfile(false);
+                }}
+              />
+            </div>
+
+            <div className="avatar-wrap" aria-hidden="true">
+              {avatarUrl ? (
+                <img className="avatar-img" src={avatarUrl} alt="Avatar" />
+              ) : (
+                <div className="avatar-fallback">{getInitials(user)}</div>
+              )}
+              <button
+                className="avatar-edit"
+                onClick={triggerAvatarPicker}
+                title="Edit avatar"
+                aria-label="Edit avatar"
+              >
+                ✎
+              </button>
+              <input
+                ref={avatarInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleAvatarSelected}
+                style={{ display: "none" }}
+              />
+            </div>
+
+            <div className="profile-name">{user?.name || user?.email || "Account"}</div>
+            <div className="profile-email">{user?.email || ""}</div>
+
+            <div className="pill-tabs">
+              <button
+                className={`pill ${profileTab === "favorites" ? "active" : ""}`}
+                onClick={() => setProfileTab("favorites")}
+              >
+                Favorites
+              </button>
+              <button
+                className={`pill ${profileTab === "about" ? "active" : ""}`}
+                onClick={() => setProfileTab("about")}
+              >
+                About
+              </button>
+            </div>
+          </div>
+
+          {profileTab === "about" && (
+            <div className="about-card">
+              <h3>Account</h3>
+              <div className="about-row">
+                <strong>Email</strong>
+                <span>{user?.email || "—"}</span>
+              </div>
+              <div className="about-row">
+                <strong>Name</strong>
+                <span>{user?.name || "—"}</span>
+              </div>
+              <p className="about-note">
+                Your saved favorites appear below. Click a card to preview.
+              </p>
+            </div>
+          )}
+
+          {profileTab === "favorites" && (
+            <>
+              {loadingFavs && <p className="meta-line">Loading favorites…</p>}
+              {favError && (
+                <p className="meta-line" style={{ color: "red" }}>
+                  {favError}
+                </p>
+              )}
+              {!loadingFavs && favImages.length === 0 && (
+                <p className="meta-line">No favorites yet.</p>
+              )}
+
+              <section className="profile-grid">
+                {favImages.map((img, idx) => (
+                  <div
+                    key={img.id ?? `${img.url}-${idx}`}
+                    className="cardv"
+                    onClick={() => openModal(img, idx)}
+                    role="button"
+                    tabIndex={0}
+                  >
+                    <div className="cardv__media">
+                      {(img.thumbs?.large || img.url || img.path) && (
+                        <img
+                          src={img.thumbs?.large || img.url || img.path}
+                          alt="Wallpaper preview"
+                          loading="lazy"
+                        />
+                      )}
+                      <div className="cardv__overlay">
+                        <button
+                          className={`fav-btn ${img.isFav ? "active" : ""}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (!user) return;
+                            toggleFavorite(img);
+                          }}
+                          title={img.isFav ? "Remove favorite" : "Add favorite"}
+                        >
+                          {img.isFav ? "❤️" : "🤍"}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="cardv__body">
+                      <h3 className="cardv__title">{img.id || "Wallpaper"}</h3>
+                      <div className="cardv__by">
+                        by <span>{img.uploader?.username || "Unknown"}</span>
+                      </div>
+
+                      <div className="meta">
+                        <div className="meta__item" title="Favorites">
+                          <span className="meta__num">
+                            {toNum(img.favorites).toLocaleString()}
+                          </span>
+                          <span className="meta__icon" aria-hidden="true">❤️</span>
+                        </div>
+                        <div className="meta__item" title="Views">
+                          <span className="meta__num">
+                            {toNum(img.views).toLocaleString()}
+                          </span>
+                          <span className="meta__icon" aria-hidden="true">👁</span>
+                        </div>
+                        <div className="meta__item" title="Resolution">
+                          <span className="meta__num">
+                            {img.resolution ||
+                              `${img.dimension_x ?? "—"}×${img.dimension_y ?? "—"}`}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="tags">
+                        {(img.tags || []).slice(0, 3).map((t) => (
+                          <span key={t?.id || t?.name} className="tag">
+                            {t?.name || "tag"}
+                          </span>
+                        ))}
+                        {Array.isArray(img.tags) && img.tags.length > 3 && (
+                          <span className="tag tag--muted">
+                            +{img.tags.length - 3}
+                          </span>
+                        )}
+                        {!img.tags && (
+                          <>
+                            <span className="tag">
+                              {img.category || "general"}
+                            </span>
+                            <span className="tag">
+                              {img.file_type?.toUpperCase() || "IMAGE"}
+                            </span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </section>
+            </>
+          )}
+
+          {selected && (
+            <ImageModal
+              image={selected}
+              onClose={closeModal}
+              onNext={showNext}
+              onPrev={showPrev}
+              query={query}
+            />
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="page">
-      {/* === top navbar (logo + search) === */}
+      {/* NAV */}
       <div className="nav">
         <div className="nav__left">
           <div className="logo-badge">W</div>
@@ -446,20 +827,36 @@ const App = () => {
           </div>
         </div>
 
-        <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
+        <div
+          style={{
+            marginLeft: "auto",
+            display: "flex",
+            gap: 8,
+            alignItems: "center",
+          }}
+        >
           {user ? (
             <>
               <button
                 className="account-btn"
-                onClick={() => setSidebarOpen(true)}
+                onClick={() => setShowProfile(true)}
                 aria-haspopup="dialog"
-                title="Open account"
+                title="Open profile"
               >
                 <span className="account-icon" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true" focusable="false">
+                  <svg
+                    viewBox="0 0 24 24"
+                    width="28"
+                    height="28"
+                    aria-hidden="true"
+                    focusable="false"
+                  >
                     <circle cx="12" cy="12" r="10" fill="none" />
                     <circle cx="12" cy="8" r="3" fill="currentColor" />
-                    <path d="M4 20c0-3.314 3.582-6 8-6s8 2.686 8 6" fill="currentColor" />
+                    <path
+                      d="M4 20c0-3.314 3.582-6 8-6s8 2.686 8 6"
+                      fill="currentColor"
+                    />
                   </svg>
                 </span>
               </button>
@@ -467,8 +864,24 @@ const App = () => {
             </>
           ) : (
             <>
-              <button onClick={() => { setShowLogin(v => !v); setShowRegister(false); }} className="btn btn-outline">Sign in</button>
-              <button onClick={() => { setShowRegister(v => !v); setShowLogin(false); }} className="btn btn-primary">Register</button>
+              <button
+                onClick={() => {
+                  setShowLogin((v) => !v);
+                  setShowRegister(false);
+                }}
+                className="btn btn-outline"
+              >
+                Sign in
+              </button>
+              <button
+                onClick={() => {
+                  setShowRegister((v) => !v);
+                  setShowLogin(false);
+                }}
+                className="btn btn-primary"
+              >
+                Register
+              </button>
             </>
           )}
         </div>
@@ -506,12 +919,7 @@ const App = () => {
         </Modal>
       )}
 
-
-      {/* account sidebar */}
-      <AccountSidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} user={user} />
-
-      
-      {/* === categories row (centered, no numbers) === */}
+      {/* Categories */}
       <div className="cats">
         {TOP_CATS.map((c) => (
           <button
@@ -520,7 +928,7 @@ const App = () => {
             onClick={() => {
               setActiveCat(c);
               setPage(1);
-              fetchWallpapers(c === "All Wallpapers" ? "" : c, 1);
+              fetchWallpapersFeed(c === "All Wallpapers" ? "" : c, 1);
             }}
           >
             {c}
@@ -528,7 +936,7 @@ const App = () => {
         ))}
       </div>
 
-      {/* === toolbar: Filters button + Safe Mode toggle === */}
+      {/* Toolbar */}
       <div className="toolbar wallify">
         <button className="filters__btn" onClick={() => setOpenDD((v) => !v)}>
           <span className="filters__icon">⏷</span> Filters
@@ -551,7 +959,10 @@ const App = () => {
             <div className="filters-dd__row">
               <label className="filters-dd__label">Sort by:</label>
               <div className="select">
-                <select value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value)}
+                >
                   {SORT.map((o) => (
                     <option key={o.value} value={o.value}>
                       {o.label}
@@ -627,11 +1038,15 @@ const App = () => {
         )}
       </div>
 
-      {/* === states === */}
+      {/* States */}
       {loading && <p className="meta-line">Loading wallpapers...</p>}
-      {error && <p className="meta-line" style={{ color: "red" }}>{error}</p>}
+      {error && (
+        <p className="meta-line" style={{ color: "red" }}>
+          {error}
+        </p>
+      )}
 
-      {/* === gallery === */}
+      {/* Gallery */}
       <section className="gallery">
         {images.map((img, idx) => (
           <div
@@ -650,13 +1065,11 @@ const App = () => {
                 />
               )}
 
-              {/* HOVER OVERLAY: only View + Get */}
               <div className="cardv__overlay">
                 <button
                   className={`fav-btn ${img.isFav ? "active" : ""}`}
                   onClick={(e) => {
                     e.stopPropagation();
-                    // require signed in user
                     if (!user) {
                       setShowLogin(true);
                       return;
@@ -669,7 +1082,6 @@ const App = () => {
               </div>
             </div>
 
-            {/* BODY */}
             <div className="cardv__body">
               <h3 className="cardv__title">{img.id || "Wallpaper"}</h3>
               <div className="cardv__by">
@@ -678,14 +1090,22 @@ const App = () => {
 
               <div className="meta">
                 <div className="meta__item" title="Favorites">
-                  {(img.favorites ?? 0).toLocaleString()} ❤️
+                  <span className="meta__num">
+                    {toNum(img.favorites).toLocaleString()}
+                  </span>
+                  <span className="meta__icon" aria-hidden="true">❤️</span>
                 </div>
                 <div className="meta__item" title="Views">
-                  {(img.views ?? 0).toLocaleString()} 👁
+                  <span className="meta__num">
+                    {toNum(img.views).toLocaleString()}
+                  </span>
+                  <span className="meta__icon" aria-hidden="true">👁</span>
                 </div>
                 <div className="meta__item" title="Resolution">
-                  {img.resolution ||
-                    `${img.dimension_x ?? "—"}×${img.dimension_y ?? "—"}`}
+                  <span className="meta__num">
+                    {img.resolution ||
+                      `${img.dimension_x ?? "—"}×${img.dimension_y ?? "—"}`}
+                  </span>
                 </div>
               </div>
 
@@ -723,7 +1143,7 @@ const App = () => {
               border: "none",
               padding: "6px 12px",
               cursor: page <= 1 ? "not-allowed" : "pointer",
-              background: "transparent"
+              background: "transparent",
             }}
           >
             ◀ Prev
@@ -749,7 +1169,7 @@ const App = () => {
                   borderRadius: "6px",
                   border: "none",
                   padding: "6px 12px",
-                  cursor: "pointer"
+                  cursor: "pointer",
                 }}
               >
                 {start + i}
@@ -766,7 +1186,7 @@ const App = () => {
               border: "none",
               padding: "6px 12px",
               cursor: page >= totalPages ? "not-allowed" : "pointer",
-              background: "transparent"
+              background: "transparent",
             }}
           >
             Next ▶
