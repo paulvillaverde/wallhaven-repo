@@ -180,7 +180,7 @@ the same card layout as the home feed.</p>
                       loading="lazy" 
                     /> 
                   )} 
-                  {/* Only the heart on hover, no extra overlay info */} 
+
                   <button 
                     className={`fav-btn ${img.isFav !== false ? "active" : ""}`} 
                     onClick={(e) => { e.stopPropagation(); toggleFavorite(img); }} 

@@ -124,7 +124,7 @@ function ImageModal({ image, onClose, onNext, onPrev, query }) {
             ◀
           </button>
 
-        <img
+          <img
             className="detail__image"
             src={image.path || image.thumbs?.large || image.url}
             alt=""
@@ -277,7 +277,7 @@ const App = () => {
 
   // avatar
   const [avatarUrl, setAvatarUrl] = useState(null);
-  const avatarInputRef = useRef(null);
+  const avatarFileRef = useRef(null);
 
   // live metadata cache (keeps counts stable)
   const metaCacheRef = useRef(new Map());
@@ -424,32 +424,44 @@ const App = () => {
     setSelectedIndex(prevIndex);
   };
 
+  // keep isFav in sync across main gallery and favorites page
+  function setIsFavEverywhere(id, value) {
+    setImages((prev) =>
+      prev.map((it) => (it?.id === id ? { ...it, isFav: value } : it))
+    );
+    setFavImages((prev) =>
+      prev.map((it) => (it?.id === id ? { ...it, isFav: value } : it))
+    );
+  }
+
   // favorites toggle (shared)
   async function toggleFavorite(img) {
-    const prev = img.isFav;
-    img.isFav = !prev;
-    setImages((cur) => [...cur]);
-    setFavImages((cur) => [...cur]);
+    const id = img.id;
+    const prevVal = Boolean(img.isFav);
+    const nextVal = !prevVal;
+
+    // optimistic UI for both lists
+    setIsFavEverywhere(id, nextVal);
 
     try {
-      if (!img.isFav) {
+      if (!nextVal) {
         const res = await fetch(
-          `http://localhost:4000/api/user/favorites/${encodeURIComponent(
-            img.id
-          )}`,
+          `http://localhost:4000/api/user/favorites/${encodeURIComponent(id)}`,
           { method: "DELETE", credentials: "include" }
         );
         const data = await res.json();
         if (!data.ok) throw new Error(data.error || "Failed to remove favorite");
-        setFavImages((cur) => cur.filter((x) => x.id !== img.id));
+
+        // remove from favorites screen list
+        setFavImages((cur) => cur.filter((x) => x.id !== id));
       } else {
         const res = await fetch("http://localhost:4000/api/user/favorites", {
           method: "POST",
           credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            image_id: img.id,
-            title: img.id,
+            image_id: id,
+            title: id,
             url: img.path || img.url || img.short_url || null,
             thumb: img.thumbs?.small || img.thumbs?.large || null,
             dimension_x: img.dimension_x || null,
@@ -460,9 +472,8 @@ const App = () => {
         if (!data.ok) throw new Error(data.error || "Failed to add favorite");
       }
     } catch (err) {
-      img.isFav = prev;
-      setImages((cur) => [...cur]);
-      setFavImages((cur) => [...cur]);
+      // rollback
+      setIsFavEverywhere(id, prevVal);
     }
   }
 
@@ -473,6 +484,34 @@ const App = () => {
     const parts = raw.split(/[\s.@_+-]+/).filter(Boolean);
     if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
     return (parts[0][0] + parts[1][0]).toUpperCase();
+  }
+
+  // avatar persistence (localStorage per-email)
+  useEffect(() => {
+    if (!user?.email) {
+      setAvatarUrl(null);
+      return;
+    }
+    try {
+      const saved = localStorage.getItem(`avatar:${user.email}`);
+      setAvatarUrl(saved || null);
+    } catch {
+      setAvatarUrl(null);
+    }
+  }, [user]);
+
+  function handlePickAvatar(e) {
+    const file = e.target.files?.[0];
+    if (!file || !user?.email) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = String(reader.result || "");
+      setAvatarUrl(dataUrl);
+      try {
+        localStorage.setItem(`avatar:${user.email}`, dataUrl);
+      } catch {}
+    };
+    reader.readAsDataURL(file);
   }
 
   async function fetchWHDetails(id) {
@@ -590,36 +629,6 @@ const App = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showProfile]);
 
-  // persist/load avatar per user
-  useEffect(() => {
-    if (!user) {
-      setAvatarUrl(null);
-      return;
-    }
-    const key = `avatar:${user.email || user.name || "user"}`;
-    const saved = localStorage.getItem(key);
-    if (saved) setAvatarUrl(saved);
-  }, [user]);
-
-  const triggerAvatarPicker = () => {
-    avatarInputRef.current?.click();
-  };
-
-  const handleAvatarSelected = (e) => {
-    const file = e.target.files?.[0];
-    if (!file || !user) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = reader.result;
-      setAvatarUrl(dataUrl);
-      const key = `avatar:${user.email || user.name || "user"}`;
-      try {
-        localStorage.setItem(key, dataUrl);
-      } catch {}
-    };
-    reader.readAsDataURL(file);
-  };
-
   // profile screen (full page)
   if (showProfile) {
     return (
@@ -642,30 +651,33 @@ const App = () => {
               />
             </div>
 
-            <div className="avatar-wrap" aria-hidden="true">
+            <div className="avatar-wrap" aria-hidden="false">
               {avatarUrl ? (
                 <img className="avatar-img" src={avatarUrl} alt="Avatar" />
               ) : (
                 <div className="avatar-fallback">{getInitials(user)}</div>
               )}
               <button
+                type="button"
                 className="avatar-edit"
-                onClick={triggerAvatarPicker}
-                title="Edit avatar"
                 aria-label="Edit avatar"
+                onClick={() => avatarFileRef.current?.click()}
+                title="Edit avatar"
               >
                 ✎
               </button>
               <input
-                ref={avatarInputRef}
+                ref={avatarFileRef}
                 type="file"
                 accept="image/*"
-                onChange={handleAvatarSelected}
-                style={{ display: "none" }}
+                onChange={handlePickAvatar}
+                hidden
               />
             </div>
 
-            <div className="profile-name">{user?.name || user?.email || "Account"}</div>
+            <div className="profile-name">
+              {user?.name || user?.email || "Account"}
+            </div>
             <div className="profile-email">{user?.email || ""}</div>
 
             <div className="pill-tabs">
@@ -1076,6 +1088,7 @@ const App = () => {
                     }
                     toggleFavorite(img);
                   }}
+                  title={img.isFav ? "Remove favorite" : "Add favorite"}
                 >
                   {img.isFav ? "❤️" : "🤍"}
                 </button>
